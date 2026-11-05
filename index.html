@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="robots" content="noindex, nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ToDo">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f3f4f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#10121a" media="(prefers-color-scheme: dark)">
+<title>ToDo</title>
+</head>
+<body>
+<style>
+/* 画面: 上に入力欄（開いたらすぐ打てる）、下に一覧（親子・状態の札・進捗メモ）、完了は一番下に畳む */
+:root{
+  --bg:#f3f4f8; --surface:#ffffff; --fg:#171a26; --muted:#5d6377; --line:#d9dce6;
+  --ac:#3352c9; --ac-fg:#ffffff; --ac-soft:#e4e9fb;
+  --doing:#a85d00; --doing-soft:#fbefdc; --done:#2f7d55; --done-soft:#e0f1e8; --ng:#c0392b;
+  --font-body:"BIZ UDPGothic","Yu Gothic UI","Hiragino Sans","Meiryo",system-ui,sans-serif;
+  --shadow:0 1px 2px rgba(23,26,38,.06),0 3px 10px rgba(23,26,38,.06);
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#10121a; --surface:#1a1d29; --fg:#e4e7f0; --muted:#9aa0b4; --line:#2c3142;
+  --ac:#7d97ff; --ac-fg:#0b1233; --ac-soft:#232c4f;
+  --doing:#f0b35c; --doing-soft:#3a2c14; --done:#6fcf9b; --done-soft:#16332a; --ng:#f07a6c; color-scheme:dark;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 3px 10px rgba(0,0,0,.25)}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;background:var(--bg)}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:16px;line-height:1.5;margin:0}
+@media (min-width:900px){body{font-size:19px}}
+.wrap{max-width:820px;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 14px) calc(env(safe-area-inset-right,0px) + 14px) calc(env(safe-area-inset-bottom,0px) + 40px) calc(env(safe-area-inset-left,0px) + 14px)}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:none;padding:0}
+input{font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:9px 12px;min-width:0}
+input:focus{outline:2px solid var(--ac);outline-offset:-1px;border-color:transparent}
+:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.muted{color:var(--muted)} .small{font-size:.85rem}
+.row{display:flex;gap:8px;align-items:center}
+.spacer{flex:1}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 14px;font-size:.9rem;white-space:nowrap}
+.btn:hover{border-color:var(--ac)}
+.btn.primary{background:var(--ac);color:var(--ac-fg);border-color:var(--ac);font-weight:700}
+.btn.danger{color:var(--ng)}
+
+header{margin-bottom:10px}
+h1{font-size:1.25rem;margin:0}
+.today{font-weight:400;color:var(--muted);font-size:.95rem;margin-left:10px}
+.sync{font-size:.82rem;color:var(--muted);padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);white-space:nowrap}
+.sync.warn{color:var(--doing);border-color:var(--doing)}
+.gear{font-size:1.15rem;width:36px;height:36px;border-radius:50%;display:grid;place-items:center}
+.gear:hover{background:var(--ac-soft)}
+
+/* 入力欄 */
+.add{display:flex;gap:8px;position:sticky;top:0;z-index:2;background:var(--bg);padding:6px 0 10px}
+.add input{flex:1;font-size:1.05rem;padding:12px 14px;border-radius:12px;box-shadow:var(--shadow)}
+.add button{border-radius:12px;padding:0 18px;font-size:1rem}
+.msg{min-height:0;display:flex;gap:10px;align-items:center;justify-content:center;font-size:.9rem;margin:0 0 6px}
+.msg:empty{display:none}
+
+/* 一覧 */
+.list{list-style:none;margin:0;padding:0;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+.list:empty{display:none}
+.item{border-top:1px solid var(--line)}
+.item:first-child{border-top:none}
+.line{display:flex;align-items:flex-start;gap:10px;padding:10px 10px 10px calc(12px + var(--d,0) * 26px)}
+.check{flex:none;width:26px;height:26px;margin-top:1px;border-radius:50%;border:2px solid var(--muted);display:grid;place-items:center;font-size:.85rem;color:transparent}
+.check:hover{border-color:var(--done)}
+.done .check{background:var(--done);border-color:var(--done);color:#fff}
+.main{flex:1;min-width:0;cursor:pointer}
+.text{overflow-wrap:anywhere}
+.done .text{color:var(--muted);text-decoration:line-through}
+.child .text{font-size:.95em}
+.note{font-size:.85rem;color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
+.note::before{content:"└ "}
+.st{flex:none;font-size:.78rem;border-radius:999px;padding:2px 10px;margin-top:2px;white-space:nowrap;border:1px solid var(--line);color:var(--muted)}
+.st.doing{background:var(--doing-soft);color:var(--doing);border-color:transparent;font-weight:700}
+.st.done{background:var(--done-soft);color:var(--done);border-color:transparent}
+.more{flex:none;width:30px;height:28px;border-radius:8px;color:var(--muted);font-size:1.1rem;line-height:1}
+.more:hover,.open .more{background:var(--ac-soft);color:var(--ac)}
+.acts{display:flex;flex-wrap:wrap;gap:6px;padding:0 10px 10px calc(48px + var(--d,0) * 26px)}
+.acts .btn{padding:4px 12px;font-size:.85rem}
+.edit{display:flex;gap:6px;padding:0 10px 10px calc(48px + var(--d,0) * 26px)}
+.edit input{flex:1;padding:6px 10px}
+.ined{width:100%;padding:5px 10px;margin:-3px 0 2px}
+.note .ined,.main .ined + .ined{margin-top:4px}
+.empty{text-align:center;color:var(--muted);padding:26px 12px}
+
+.donebox{margin-top:18px}
+.donebox summary{cursor:pointer;color:var(--muted);font-size:.92rem;padding:6px 4px;list-style:none}
+.donebox summary::-webkit-details-marker{display:none}
+.donebox summary::before{content:"▸ "}
+.donebox[open] summary::before{content:"▾ "}
+.donebox .list{margin-top:6px}
+
+/* 設定 */
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--fg);padding:18px;width:min(92vw,440px);box-shadow:0 10px 40px rgba(0,0,0,.25)}
+dialog::backdrop{background:rgba(0,0,0,.4)}
+dialog h3{margin:0 0 10px;font-size:1.05rem}
+.field{display:grid;gap:4px;margin-bottom:12px;font-size:.9rem}
+.field input{width:100%}
+dialog p{margin:0 0 12px}
+.err{color:var(--ng);font-size:.9rem;min-height:1.4em}
+</style>
+
+<div class="wrap">
+  <header class="row">
+    <h1>ToDo<span class="today" id="today"></span></h1>
+    <span class="spacer"></span>
+    <button type="button" class="sync" id="sync" title="押すと今すぐ同期">…</button>
+    <button type="button" class="gear" id="gear" aria-label="設定">⚙</button>
+  </header>
+
+  <form class="add" id="addForm" autocomplete="off">
+    <input id="newText" type="text" placeholder="思い出したら書いて Enter" enterkeyhint="done" maxlength="200" autofocus>
+    <button type="submit" class="btn primary" id="addBtn">追加</button>
+  </form>
+  <div class="msg" id="msg" aria-live="polite"></div>
+
+  <ul class="list" id="list"></ul>
+  <div class="empty" id="empty" hidden>やることはありません 🎉</div>
+
+  <details class="donebox" id="doneBox" hidden>
+    <summary id="doneSum"></summary>
+    <ul class="list" id="doneList"></ul>
+  </details>
+</div>
+
+<dialog id="cfg">
+  <form id="cfgForm" method="dialog">
+    <h3>同期の設定</h3>
+    <p class="small muted">PC とスマホで同じ一覧を見るための設定です。GitHub の非公開リポジトリに保存します。合言葉（トークン）はこの端末の中にだけ保存されます。</p>
+    <label class="field"><span>合言葉（GitHub のトークン）</span><input id="cfgToken" type="password" placeholder="github_pat_…" autocomplete="off"></label>
+    <label class="field"><span>保存先（リポジトリ）</span><input id="cfgRepo" type="text" placeholder="kazuse429-eng/todo-data" autocomplete="off"></label>
+    <p class="err" id="cfgErr"></p>
+    <div class="row">
+      <button type="button" class="btn" id="cfgBackup">バックアップ</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" id="cfgCancel">やめる</button>
+      <button type="submit" class="btn primary" id="cfgSave">保存して同期</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+// ToDo の計算部分（画面に触らない。test_logic.cjs で検算する）
+// 項目 {id, text, parent, order, status, note, noteDate, updated, deleted}
+//   status: "todo"=未着手 / "doing"=対応中 / "done"=完了。parent は親の id か null。
+//   order は兄弟の中の並び（小さいほど上）。updated は最後に変えた時刻(ms)。削除は deleted:true で残す（墓標）
+//   ＝ 別の端末の古い版と合体しても消したものが生き返らない。墓標は30日で掃除する。
+const Logic = (function () {
+  "use strict";
+  const STATUS = ["todo", "doing", "done"];
+  const LABEL = { todo: "未着手", doing: "対応中", done: "完了" };
+  const DAY = 24 * 3600 * 1000, KEEP = 30 * DAY;
+  const p2 = n => String(n).padStart(2, "0");
+  const ymd = d => d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate());
+
+  function uid() {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  }
+  function valid(it) {
+    return it && typeof it.id === "string" && it.id && typeof it.text === "string"
+      && (it.parent === null || typeof it.parent === "string")
+      && typeof it.order === "number" && isFinite(it.order) && STATUS.includes(it.status)
+      && typeof it.note === "string" && (it.noteDate === null || /^\d{4}-\d\d-\d\d$/.test(it.noteDate))
+      && typeof it.updated === "number" && typeof it.deleted === "boolean";
+  }
+  const clean = it => ({ id: it.id, text: it.text, parent: it.parent, order: it.order, status: it.status,
+    note: it.note, noteDate: it.noteDate, updated: it.updated, deleted: it.deleted });
+  const live = items => items.filter(i => !i.deleted);
+  const byId = items => new Map(items.map(i => [i.id, i]));
+  // 親が無い・消えた子は一番上の段として扱う（別の端末で親を消した直後に子を足した場合など）
+  function parentOf(it, map) {
+    const p = it.parent && map.get(it.parent);
+    return p && !p.deleted ? p.id : null;
+  }
+  function siblings(items, parent) {
+    const map = byId(items);
+    return live(items).filter(i => parentOf(i, map) === parent).sort((a, b) => a.order - b.order || (a.id < b.id ? -1 : 1));
+  }
+  function change(items, id, fields, now) {
+    return items.map(i => i.id === id ? Object.assign({}, i, fields, { updated: now }) : i);
+  }
+
+  // ---- 操作（どれも新しい配列を返す） ----
+  function add(items, text, parent, now) {
+    text = String(text).trim();
+    if (!text) return items;
+    const sib = siblings(items, parent || null);
+    // 一番上の段は新しいものが上（受け箱）、子は書いた順に下へ（手順を続けて足すため）
+    const order = !sib.length ? 0 : parent ? sib[sib.length - 1].order + 1 : sib[0].order - 1;
+    return items.concat([{ id: uid(), text, parent: parent || null, order, status: "todo", note: "",
+      noteDate: null, updated: now, deleted: false }]);
+  }
+  function rename(items, id, text, now) {
+    text = String(text).trim();
+    return text ? change(items, id, { text }, now) : items;
+  }
+  function setStatus(items, id, status, now) { return change(items, id, { status }, now); }
+  function nextStatus(s) { return STATUS[(STATUS.indexOf(s) + 1) % 3]; }
+  // 丸: 完了 ⇔ 未着手（対応中から押すと完了）
+  function toggleDone(items, id, now) {
+    const it = items.find(i => i.id === id);
+    return setStatus(items, id, it.status === "done" ? "todo" : "done", now);
+  }
+  function setNote(items, id, note, now) {
+    note = String(note).trim();
+    return change(items, id, { note, noteDate: note ? ymd(new Date(now)) : null }, now);
+  }
+  // 子・孫もまとめて消す。戻すための控え(prev)も返す
+  function remove(items, id, now) {
+    const kill = new Set([id]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const i of items) if (!i.deleted && i.parent && kill.has(i.parent) && !kill.has(i.id)) { kill.add(i.id); grew = true; }
+    }
+    const prev = items.filter(i => kill.has(i.id) && !i.deleted);
+    return { items: items.map(i => kill.has(i.id) && !i.deleted ? Object.assign({}, i, { deleted: true, updated: now }) : i), prev };
+  }
+  function restore(items, prev, now) {
+    const m = byId(prev);
+    return items.map(i => m.has(i.id) ? Object.assign({}, m.get(i.id), { updated: now }) : i);
+  }
+  // 兄弟の中で1つ上(-1)・下(+1)と入れ替える。完了と未完了は別の段で並ぶので、同じ側の兄弟とだけ入れ替える
+  function move(items, id, dir, now) {
+    const it = items.find(i => i.id === id);
+    const map = byId(items);
+    const par = parentOf(it, map);
+    const sib = siblings(items, par).filter(i => par !== null || ((i.status === "done") === (it.status === "done")));
+    const k = sib.findIndex(i => i.id === id), j = k + dir;
+    if (k < 0 || j < 0 || j >= sib.length) return items;
+    const a = sib[k], b = sib[j];
+    let oa = b.order, ob = a.order;
+    if (oa === ob) { oa = ob + dir; }   // 同じ値なら押し分ける
+    return items.map(i => i.id === a.id ? Object.assign({}, i, { order: oa, updated: now })
+      : i.id === b.id ? Object.assign({}, i, { order: ob, updated: now }) : i);
+  }
+
+  // ---- 表示の並び ----
+  // 戻り値 {open:[{item,depth}], done:[{item,depth}]}。一番上の段の完了は done へ（子ごと）。子の完了はその場に残す
+  function view(items) {
+    const out = { open: [], done: [] };
+    function walk(parent, depth, dest, seen) {
+      for (const it of siblings(items, parent)) {
+        if (seen.has(it.id)) continue;   // 親子が輪になった壊れたデータでも止まる
+        seen.add(it.id);
+        dest.push({ item: it, depth });
+        walk(it.id, depth + 1, dest, seen);
+      }
+    }
+    const seen = new Set();
+    for (const it of siblings(items, null)) {
+      const dest = it.status === "done" ? out.done : out.open;
+      seen.add(it.id);
+      dest.push({ item: it, depth: 0 });
+      walk(it.id, 1, dest, seen);
+    }
+    // 輪になって根から届かない項目も落とさない
+    for (const it of live(items)) if (!seen.has(it.id)) out.open.push({ item: it, depth: 0 });
+    return out;
+  }
+  function noteLine(it) {
+    if (!it.note) return "";
+    if (!it.noteDate) return it.note;
+    const m = it.noteDate.split("-");
+    return it.note + "（" + (+m[1]) + "/" + (+m[2]) + "）";
+  }
+
+  // ---- 合体（同期） ----
+  // 項目ごとに updated が新しい方。同時刻なら中身の文字列で決める（どちらの端末で合体しても同じ結果）
+  function merge(a, b, now) {
+    const m = new Map();
+    for (const it of a.concat(b)) {
+      const o = m.get(it.id);
+      if (!o || it.updated > o.updated || (it.updated === o.updated && JSON.stringify(clean(it)) > JSON.stringify(clean(o)))) m.set(it.id, it);
+    }
+    return canon([...m.values()].filter(i => !(i.deleted && now - i.updated > KEEP)));
+  }
+  const canon = items => items.map(clean).sort((x, y) => x.id < y.id ? -1 : x.id > y.id ? 1 : 0);
+  const same = (a, b) => JSON.stringify(canon(a)) === JSON.stringify(canon(b));
+
+  function toDoc(items) { return { app: "todo", v: 1, items: canon(items) }; }
+  function parseDoc(o) {
+    if (!o || o.app !== "todo" || !Array.isArray(o.items) || !o.items.every(valid)) return null;
+    return o.items.map(clean);
+  }
+
+  // 同期: api.get() → {items, sha} か null（まだファイルが無い）。api.put(doc, sha) → true / "conflict"（先を越された）
+  // 失敗は例外。先を越されたら取り直して最大3回
+  async function sync(api, local, now) {
+    for (let k = 0; k < 3; k++) {
+      const r = await api.get();
+      const remote = r ? r.items : [];
+      const merged = merge(local, remote, now);
+      if (r && same(merged, remote)) return { items: merged, wrote: false };
+      const ok = await api.put(toDoc(merged), r ? r.sha : null);
+      if (ok === true) return { items: merged, wrote: true };
+      if (ok !== "conflict") throw new Error("put failed");
+    }
+    throw new Error("conflict");
+  }
+
+  // 旧アプリ（WinForms）の todos.json → 項目
+  function fromOld(arr, now) {
+    const st = { NotStarted: "todo", Doing: "doing", Done: "done" };
+    return arr.map(o => ({
+      id: String(o.Id), text: String(o.Text || ""), parent: o.ParentId ? String(o.ParentId) : null,
+      order: Number(o.Order) || 0,
+      status: st[o.Status] || (o.Done ? "done" : "todo"),
+      note: String(o.Note || ""), noteDate: o.Note && o.NoteDate ? String(o.NoteDate).slice(0, 10) : null,
+      updated: now, deleted: false }));
+  }
+
+  // UTF-8 ⇔ base64（GitHub の Contents API は base64 で受け渡す）
+  function toB64(s) {
+    const b = new TextEncoder().encode(s);
+    let bin = "";
+    for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+  function fromB64(s) {
+    const bin = atob(s.replace(/\s/g, ""));
+    const b = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(b);
+  }
+
+  return { STATUS, LABEL, ymd, valid, add, rename, setStatus, nextStatus, toggleDone, setNote, remove, restore, move,
+    siblings, view, noteLine, merge, same, toDoc, parseDoc, sync, fromOld, toB64, fromB64 };
+})();
+
+</script>
+<script>
+// ToDo の画面。計算と合体は logic.js（Logic）。
+// 保存: まず端末の localStorage（todo.v1）→ 裏で GitHub の非公開リポへ（電波が無くても入力は消えない）
+(function () {
+  "use strict";
+  const KEY = "todo.v1", CFG = "todo.cfg", DEF_REPO = "kazuse429-eng/todo-data", FILE = "todos.json";
+  const $ = id => document.getElementById(id);
+  const now = () => window.__todoNow || Date.now();   // __todoNow は検証用の時計
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+  let st = load();             // {items, dirty}
+  let cfg = loadCfg();         // {token, repo}
+  let openId = null;           // 操作ボタンを出している行
+  let editing = null;          // {id, kind:"text"|"note"|"child"}
+  let pendingRender = false;   // 入力中に同期で中身が変わったら、入力が終わってから描き直す
+  let undo = null, msgTimer = 0;
+
+  function load() {
+    const raw = localStorage.getItem(KEY);
+    if (raw) {
+      try {
+        const o = JSON.parse(raw);
+        if (Array.isArray(o.items) && o.items.every(Logic.valid)) return { items: o.items, dirty: !!o.dirty };
+      } catch (e) { }
+      localStorage.setItem(KEY + ".broken", raw);   // 読めない保存分は消さずによけておく
+    }
+    return { items: [], dirty: false };
+  }
+  function loadCfg() {
+    try { const o = JSON.parse(localStorage.getItem(CFG) || "{}"); return { token: o.token || "", repo: o.repo || DEF_REPO }; }
+    catch (e) { return { token: "", repo: DEF_REPO }; }
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(st)); }
+    catch (e) { say("この端末に保存できませんでした（空き容量かプライベートモードを確認）"); }
+  }
+  // 変更はすべてここを通す
+  function commit(items) {
+    if (items === st.items) return;
+    st.items = items; st.dirty = true;
+    save(); render(); scheduleSync(800);
+  }
+  function say(text, undoFn) {
+    const m = $("msg");
+    m.textContent = text;
+    clearTimeout(msgTimer);
+    undo = undoFn || null;
+    if (undoFn) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "btn"; b.id = "undo"; b.textContent = "元に戻す";
+      b.onclick = () => { const f = undo; undo = null; say(""); if (f) f(); };
+      m.appendChild(b);
+    }
+    if (text) msgTimer = setTimeout(() => { undo = null; m.textContent = ""; }, 8000);
+  }
+
+  // ---- 描画 ----
+  function rowHtml(r) {
+    const it = r.item, d = r.depth;
+    const cls = ["item", it.status === "done" ? "done" : "", d ? "child" : "", openId === it.id ? "open" : ""].join(" ");
+    const ed = editing && editing.id === it.id ? editing.kind : "";
+    let h = '<li class="' + cls + '" data-id="' + esc(it.id) + '" style="--d:' + d + '"><div class="line">'
+      + '<button type="button" class="check" data-act="check" aria-label="完了">✓</button><div class="main" data-act="open">';
+    h += ed === "text" ? editor(it.text, "名前") : '<div class="text">' + esc(it.text) + "</div>";
+    if (ed === "note") h += editor(it.note, "進捗メモ（Enterで確定・Escで取消）");
+    else if (it.note) h += '<div class="note" data-act="note">' + esc(Logic.noteLine(it)) + "</div>";
+    h += '</div><button type="button" class="st ' + it.status + '" data-act="status" title="押すと 未着手→対応中→完了">' + Logic.LABEL[it.status] + "</button>"
+      + '<button type="button" class="more" data-act="open" aria-label="操作">⋯</button></div>';
+    if (openId === it.id && !ed) {
+      h += '<div class="acts">'
+        + '<button type="button" class="btn" data-act="child">＋ 子を追加</button>'
+        + '<button type="button" class="btn" data-act="note">メモ</button>'
+        + '<button type="button" class="btn" data-act="rename">名前を変える</button>'
+        + '<button type="button" class="btn" data-act="up" aria-label="上へ">↑</button>'
+        + '<button type="button" class="btn" data-act="down" aria-label="下へ">↓</button>'
+        + '<button type="button" class="btn danger" data-act="del">削除</button></div>';
+    }
+    if (ed === "child") h += '<div class="edit">' + editor("", "「" + it.text + "」の子を書いて Enter（続けて足せる）", true) + "</div>";
+    return h + "</li>";
+  }
+  function editor(value, ph, block) {
+    return '<input class="' + (block ? "" : "ined") + '" data-edit="1" type="text" maxlength="200" value="' + esc(value) + '" placeholder="' + esc(ph) + '" enterkeyhint="done">';
+  }
+  function render() {
+    if (editing && document.activeElement && document.activeElement.dataset.edit) { pendingRender = true; return; }
+    pendingRender = false;
+    const v = Logic.view(st.items);
+    $("list").innerHTML = v.open.map(rowHtml).join("");
+    $("doneList").innerHTML = v.done.map(rowHtml).join("");
+    $("empty").hidden = v.open.length > 0;
+    $("doneBox").hidden = v.done.length === 0;
+    $("doneSum").textContent = "完了 " + v.done.filter(r => r.depth === 0).length + "件";
+    const d = new Date(now());
+    $("today").textContent = (d.getMonth() + 1) + "月" + d.getDate() + "日(" + "日月火水木金土"[d.getDay()] + ")";
+    const inp = document.querySelector("[data-edit]");
+    if (inp) { inp.focus(); const n = inp.value.length; inp.setSelectionRange(n, n); }
+    renderSync();
+  }
+
+  // ---- 操作 ----
+  $("addForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const t = $("newText").value;
+    if (!t.trim()) { $("newText").focus(); return; }
+    $("newText").value = "";
+    commit(Logic.add(st.items, t, null, now()));
+    $("newText").focus();
+  });
+  $("newText").addEventListener("keydown", e => { if (e.key === "Escape") e.target.value = ""; });
+
+  function onAct(e) {
+    const b = e.target.closest("[data-act]");
+    if (!b) return;
+    const li = b.closest(".item"), id = li.dataset.id, act = b.dataset.act;
+    if (editing && editing.id === id && act !== "check" && act !== "status") return;   // 入力中の欄を押しただけ
+    const t = now();
+    if (act === "check") commit(Logic.toggleDone(st.items, id, t));
+    else if (act === "status") { const it = st.items.find(i => i.id === id); commit(Logic.setStatus(st.items, id, Logic.nextStatus(it.status), t)); }
+    else if (act === "open") { openId = openId === id ? null : id; render(); }
+    else if (act === "note") { openId = null; editing = { id, kind: "note" }; render(); }
+    else if (act === "rename") { openId = null; editing = { id, kind: "text" }; render(); }
+    else if (act === "child") { openId = null; editing = { id, kind: "child" }; render(); }
+    else if (act === "up" || act === "down") commit(Logic.move(st.items, id, act === "up" ? -1 : 1, t));
+    else if (act === "del") {
+      const r = Logic.remove(st.items, id, t), name = st.items.find(i => i.id === id).text;
+      openId = null;
+      commit(r.items);
+      say("「" + name + "」を削除しました" + (r.prev.length > 1 ? "（子 " + (r.prev.length - 1) + "件も）" : ""),
+        () => commit(Logic.restore(st.items, r.prev, now())));
+    }
+  }
+  $("list").addEventListener("click", onAct);
+  $("doneList").addEventListener("click", onAct);
+
+  // 行の中の入力欄: Enter で確定、Esc で取消、よそを押したら確定（スマホには Esc が無いので）
+  function finish(inp, ok) {
+    if (!editing || inp.dataset.done) return;
+    inp.dataset.done = "1";
+    const ed = editing, v = inp.value, t = now();
+    editing = null;
+    if (!ok) { render(); return; }
+    if (ed.kind === "text") commit(Logic.rename(st.items, ed.id, v, t));
+    else if (ed.kind === "note") {
+      const it = st.items.find(i => i.id === ed.id);
+      if (it && v.trim() !== it.note) commit(Logic.setNote(st.items, ed.id, v, t));
+    }
+    else if (ed.kind === "child" && v.trim()) commit(Logic.add(st.items, v, ed.id, t));
+    render();
+  }
+  document.addEventListener("keydown", e => {
+    const inp = e.target;
+    if (!inp.dataset || !inp.dataset.edit || e.isComposing || e.keyCode === 229) return;   // 変換中の Enter は無視
+    if (e.key === "Escape") { e.preventDefault(); finish(inp, false); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      if (editing && editing.kind === "child" && inp.value.trim()) {
+        // 子は続けて足せるように欄を残す
+        const pid = editing.id, v = inp.value;
+        inp.dataset.done = "1"; editing = null;
+        commit(Logic.add(st.items, v, pid, now()));
+        editing = { id: pid, kind: "child" }; render();
+      } else finish(inp, true);
+    }
+  });
+  document.addEventListener("focusout", e => {
+    const inp = e.target;
+    if (inp.dataset && inp.dataset.edit) setTimeout(() => { if (document.activeElement !== inp) finish(inp, true); }, 0);
+  });
+  // 欄の外を押したら確定（窓にフォーカスが無いと focusout が来ないことがあるので、押した瞬間でも拾う）
+  document.addEventListener("pointerdown", e => {
+    const inp = document.querySelector("[data-edit]");
+    if (inp && e.target !== inp) finish(inp, true);
+  }, true);
+
+  // ---- 同期（GitHub Contents API） ----
+  const sync = { busy: false, again: false, timer: 0, state: "", at: 0 };
+  const url = () => "https://api.github.com/repos/" + cfg.repo + "/contents/" + FILE;
+  const hdr = () => ({ "Authorization": "Bearer " + cfg.token, "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" });
+  class HttpErr extends Error { constructor(s) { super("http " + s); this.status = s; } }
+  const api = window.__todoApi || {
+    async get() {
+      const r = await fetch(url(), { headers: hdr(), cache: "no-store" });
+      if (r.status === 404) return null;
+      if (!r.ok) throw new HttpErr(r.status);
+      const j = await r.json();
+      const items = Logic.parseDoc(JSON.parse(Logic.fromB64(j.content)));
+      if (!items) throw new Error("format");
+      return { items, sha: j.sha };
+    },
+    async put(doc, sha) {
+      const body = { message: "更新 " + new Date().toISOString().slice(0, 16), content: Logic.toB64(JSON.stringify(doc, null, 1)) };
+      if (sha) body.sha = sha;
+      const r = await fetch(url(), { method: "PUT", headers: hdr(), body: JSON.stringify(body) });
+      if (r.ok) return true;
+      if (r.status === 409 || r.status === 422) return "conflict";
+      throw new HttpErr(r.status);
+    } };
+  function scheduleSync(ms) { clearTimeout(sync.timer); sync.timer = setTimeout(runSync, ms); }
+  async function runSync() {
+    if (!cfg.token && !window.__todoApi) { sync.state = "off"; renderSync(); return; }
+    if (sync.busy) { sync.again = true; return; }
+    sync.busy = true; sync.state = "busy"; renderSync();
+    try {
+      const sent = st.items;
+      const r = await Logic.sync(api, sent, now());
+      // 同期の間に打った分は残して合体
+      const merged = Logic.merge(st.items, r.items, now());
+      const changed = !Logic.same(merged, st.items);
+      st.items = merged;
+      st.dirty = !Logic.same(merged, r.items);
+      save();
+      if (changed) render();
+      sync.state = "ok"; sync.at = now();
+      if (st.dirty) sync.again = true;
+    } catch (e) {
+      sync.state = e.status === 401 || e.status === 403 || e.status === 404 ? "auth" : e.message === "format" ? "format" : "net";
+    } finally {
+      sync.busy = false; renderSync();
+      if (sync.again) { sync.again = false; scheduleSync(300); }
+    }
+  }
+  function renderSync() {
+    const b = $("sync"), d = new Date(sync.at);
+    const s = { off: "同期なし（⚙で設定）", busy: "↻ 同期中", ok: "✓ " + d.getHours() + ":" + String(d.getMinutes()).padStart(2, "0"),
+      auth: "⚠ 合言葉か保存先が違う", format: "⚠ 保存先の中身が読めない", net: st.dirty ? "⚠ 未送信あり（電波待ち）" : "⚠ つながらない" }[sync.state] || "…";
+    b.textContent = s;
+    b.className = "sync" + (["auth", "format", "net", "off"].includes(sync.state) ? " warn" : "");
+  }
+  $("sync").onclick = () => { if (!cfg.token && !window.__todoApi) openCfg(); else runSync(); };
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { render(); runSync(); } });
+  window.addEventListener("online", () => runSync());
+  setInterval(() => { if (document.visibilityState === "visible" && !sync.busy) runSync(); }, 60000);
+
+  // ---- 設定 ----
+  function openCfg() {
+    $("cfgToken").value = cfg.token; $("cfgRepo").value = cfg.repo; $("cfgErr").textContent = "";
+    $("cfg").showModal();
+  }
+  $("gear").onclick = openCfg;
+  $("cfgCancel").onclick = () => $("cfg").close();
+  $("cfgForm").addEventListener("submit", e => {
+    const token = $("cfgToken").value.trim(), repo = $("cfgRepo").value.trim() || DEF_REPO;
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) { e.preventDefault(); $("cfgErr").textContent = "保存先は「持ち主/リポジトリ名」の形で"; return; }
+    cfg = { token, repo };
+    localStorage.setItem(CFG, JSON.stringify(cfg));
+    runSync();
+  });
+  $("cfgBackup").onclick = () => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(Logic.toDoc(st.items), null, 1)], { type: "application/json" }));
+    a.download = "todo_" + Logic.ymd(new Date(now())) + ".json";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+
+  window.__todo = { render, runSync, get st() { return st; }, get sync() { return sync; } };
+  render();
+  $("newText").focus();
+  runSync();
+})();
+
+</script>
+<script>if('serviceWorker' in navigator && location.protocol.startsWith('http')){var hadSW=!!navigator.serviceWorker.controller,reloaded=false;navigator.serviceWorker.addEventListener('controllerchange',function(){if(hadSW&&!reloaded&&!document.querySelector('dialog[open],[data-edit]')){reloaded=true;location.reload();}});navigator.serviceWorker.register('sw.js').catch(function(){});}</script>
+</body>
+</html>
